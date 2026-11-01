@@ -1,5 +1,12 @@
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
@@ -20,7 +27,6 @@ import {
   FiLayers,
   FiStar,
 } from "react-icons/fi";
-
 
 const API_URL = "https://oud-elite.shaarapp.com/api/v1";
 
@@ -84,55 +90,6 @@ const slugify = (value = "") =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-const getProductId = (response, payload = {}) => {
-  const data = response?.data;
-
-  const candidates = [
-    data?.data?.product?.id,
-    data?.data?.product_id,
-    data?.data?.productId,
-    data?.data?.id,
-    data?.product?.id,
-    data?.product_id,
-    data?.productId,
-    data?.id,
-  ];
-
-  const directId = candidates.find(
-    (id) => id !== undefined && id !== null && id !== ""
-  );
-
-  if (directId) return directId;
-
-  const expectedSku = payload.sku?.toString().trim().toLowerCase();
-  const expectedSlug = payload.slug?.toString().trim().toLowerCase();
-
-  const searchObject = (object) => {
-    if (!object || typeof object !== "object") return null;
-
-    if (!Array.isArray(object)) {
-      const sku = object.sku?.toString().trim().toLowerCase();
-      const slug = object.slug?.toString().trim().toLowerCase();
-
-      if (
-        (expectedSku && sku === expectedSku) ||
-        (expectedSlug && slug === expectedSlug)
-      ) {
-        return object.id || object.product_id || object.productId || null;
-      }
-    }
-
-    for (const value of Object.values(object)) {
-      const found = searchObject(value);
-      if (found) return found;
-    }
-
-    return null;
-  };
-
-  return searchObject(data);
-};
-
 const emptyForm = {
   sku: "",
   name_ar: "",
@@ -172,7 +129,10 @@ const Field = ({ label, children }) => (
 
 const Toggle = ({ label, checked, onChange }) => (
   <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-    <span className="text-sm font-medium text-gray-700">{label}</span>
+    <span className="text-sm font-medium text-gray-700">
+      {label}
+    </span>
+
     <button
       type="button"
       onClick={() => onChange(!checked)}
@@ -193,9 +153,14 @@ const StatCard = ({ title, value, icon: Icon }) => (
   <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+        <p className="text-sm font-medium text-gray-500">
+          {title}
+        </p>
+        <p className="mt-2 text-2xl font-bold text-gray-900">
+          {value}
+        </p>
       </div>
+
       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
         <Icon size={21} />
       </div>
@@ -205,6 +170,7 @@ const StatCard = ({ title, value, icon: Icon }) => (
 
 export default function AllProducts() {
   const { i18n } = useTranslation();
+
   const isArabic = i18n.language?.startsWith("ar");
   const dir = isArabic ? "rtl" : "ltr";
 
@@ -212,19 +178,21 @@ export default function AllProducts() {
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const [search, setSearch] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+  const [form, setForm] = useState({ ...emptyForm });
+
   const [selectedImages, setSelectedImages] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [deletingImageId, setDeletingImageId] = useState(null);
-
-  const [form, setForm] = useState({ ...emptyForm });
 
   const labels = {
     products: tr("Products", "المنتجات"),
@@ -287,15 +255,24 @@ export default function AllProducts() {
   const textareaClass =
     "w-full min-w-0 resize-y rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100";
 
+  // =========================
+  // GET PRODUCTS
+  // =========================
+
   const loadProducts = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/products`, {
-        params: { page: 1, limit: 100, sort: "newest" },
+        params: {
+          page: 1,
+          limit: 100,
+          sort: "newest",
+        },
       });
 
       setProducts(getProducts(response));
     } catch (error) {
       console.error("Load products error:", error);
+
       toast.error(
         error.response?.data?.message ||
           tr("Failed to load products", "فشل تحميل المنتجات")
@@ -303,10 +280,17 @@ export default function AllProducts() {
     }
   }, [isArabic]);
 
+  // =========================
+  // GET CATEGORIES
+  // =========================
+
   const loadCategories = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/categories`, {
-        params: { page: 1, limit: 100 },
+        params: {
+          page: 1,
+          limit: 100,
+        },
       });
 
       setCategories(getCategories(response));
@@ -316,38 +300,50 @@ export default function AllProducts() {
     }
   }, []);
 
+  // =========================
+  // LOAD ALL DATA
+  // =========================
+
   const loadData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadProducts(), loadCategories()]);
-    setLoading(false);
+
+    try {
+      await Promise.all([
+        loadProducts(),
+        loadCategories(),
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }, [loadProducts, loadCategories]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Fallback: search for the created product using SKU or slug.
+  // =========================
+  // FIND CREATED PRODUCT ID
+  // =========================
+
   const findCreatedProductId = async (payload) => {
     try {
       const response = await axios.get(`${API_URL}/products`, {
-        params: { page: 1, limit: 100, sort: "newest" },
+        params: {
+          page: 1,
+          limit: 100,
+          sort: "newest",
+        },
       });
 
       const list = getProducts(response);
-      const sku = payload.sku?.toLowerCase().trim();
-      const slug = payload.slug?.toLowerCase().trim();
 
-      let found = sku
-        ? list.find(
-            (item) => item.sku?.toLowerCase().trim() === sku
-          )
-        : null;
-
-      if (!found && slug) {
-        found = list.find(
-          (item) => item.slug?.toLowerCase().trim() === slug
-        );
-      }
+      const found = list.find(
+        (item) =>
+          item.sku?.toLowerCase().trim() ===
+            payload.sku.toLowerCase().trim() ||
+          item.slug?.toLowerCase().trim() ===
+            payload.slug.toLowerCase().trim()
+      );
 
       return found?.id || found?.product_id || null;
     } catch (error) {
@@ -356,8 +352,15 @@ export default function AllProducts() {
     }
   };
 
+  // =========================
+  // FORM FUNCTIONS
+  // =========================
+
   const updateField = (name, value) => {
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const openAddForm = () => {
@@ -370,7 +373,11 @@ export default function AllProducts() {
   const openEditForm = (product) => {
     const productCategories = Array.isArray(product.categories)
       ? product.categories.map((category) =>
-          Number(typeof category === "object" ? category.id : category)
+          Number(
+            typeof category === "object"
+              ? category.id
+              : category
+          )
         )
       : [];
 
@@ -379,26 +386,36 @@ export default function AllProducts() {
     setForm({
       ...emptyForm,
       ...product,
+
       sku: product.sku || "",
       name_ar: product.name_ar || "",
       name_en: product.name_en || "",
       slug: product.slug || "",
+
       short_desc_ar: product.short_desc_ar || "",
       short_desc_en: product.short_desc_en || "",
+
       description_ar: product.description_ar || "",
       description_en: product.description_en || "",
+
+      brand_id: product.brand_id ?? 1,
+
       base_price: product.base_price ?? "",
       sale_price: product.sale_price ?? "",
       cost_price: product.cost_price ?? "",
+
       stock_qty: product.stock_qty ?? "",
       low_stock_alert: product.low_stock_alert ?? 5,
       volume_ml: product.volume_ml ?? 100,
+
       concentration: product.concentration || "edp",
       gender: product.gender || "unisex",
+
       is_active: isTrue(product.is_active),
       is_featured: isTrue(product.is_featured),
       is_best_seller: isTrue(product.is_best_seller),
       is_new: isTrue(product.is_new),
+
       sort_order: product.sort_order ?? 0,
       categories: productCategories,
     });
@@ -409,11 +426,16 @@ export default function AllProducts() {
 
   const closeForm = () => {
     if (saving || uploadingImages) return;
+
     setShowForm(false);
     setEditingId(null);
     setSelectedImages([]);
     setForm({ ...emptyForm });
   };
+
+  // =========================
+  // CATEGORY SELECTION
+  // =========================
 
   const handleCategoryChange = (categoryId) => {
     const id = Number(categoryId);
@@ -426,8 +448,13 @@ export default function AllProducts() {
     }));
   };
 
+  // =========================
+  // IMAGE SELECTION
+  // =========================
+
   const handleImageSelect = (event) => {
     const files = Array.from(event.target.files || []);
+
     const validFiles = files.filter((file) =>
       file.type.startsWith("image/")
     );
@@ -452,10 +479,18 @@ export default function AllProducts() {
   const removeSelectedImage = (index) => {
     setSelectedImages((prev) => {
       const image = prev[index];
-      if (image?.preview) URL.revokeObjectURL(image.preview);
+
+      if (image?.preview) {
+        URL.revokeObjectURL(image.preview);
+      }
+
       return prev.filter((_, i) => i !== index);
     });
   };
+
+  // =========================
+  // UPLOAD PRODUCT IMAGES
+  // =========================
 
   const uploadProductImages = async (productId) => {
     if (!productId || !selectedImages.length) return;
@@ -472,24 +507,42 @@ export default function AllProducts() {
       await axios.post(
         `${API_URL}/products/${productId}/images`,
         formData,
-        { headers: getHeaders() }
+        {
+          headers: getHeaders(),
+        }
       );
+
+      selectedImages.forEach((item) => {
+        URL.revokeObjectURL(item.preview);
+      });
+
+      setSelectedImages([]);
 
       toast.success(
         tr("Images uploaded successfully", "تم رفع الصور بنجاح")
       );
 
-      setSelectedImages([]);
+      return true;
     } catch (error) {
-      console.error("Upload images error:", error);
+      console.error(
+        "Upload images error:",
+        error.response?.data || error
+      );
+
       toast.error(
         error.response?.data?.message ||
           tr("Failed to upload images", "فشل رفع الصور")
       );
+
+      return false;
     } finally {
       setUploadingImages(false);
     }
   };
+
+  // =========================
+  // DELETE PRODUCT IMAGE
+  // =========================
 
   const handleDeleteImage = async (image) => {
     const imageId = image?.id || image?.image_id;
@@ -513,17 +566,37 @@ export default function AllProducts() {
 
     try {
       await axios.delete(
-        `${API_URL}/products/images/1`,
-        { headers: getHeaders() }
+        `${API_URL}/products/${editingId}/images/${imageId}`,
+        {
+          headers: getHeaders(),
+        }
       );
 
       toast.success(
         tr("Image deleted successfully", "تم حذف الصورة بنجاح")
       );
 
-      await loadProducts();
+      // Update image list immediately
+      setProducts((prev) =>
+        prev.map((product) =>
+          String(product.id) === String(editingId)
+            ? {
+                ...product,
+                images: getImages(product).filter(
+                  (item) =>
+                    String(item.id || item.image_id) !==
+                    String(imageId)
+                ),
+              }
+            : product
+        )
+      );
     } catch (error) {
-      console.error("Delete image error:", error);
+      console.error(
+        "Delete image error:",
+        error.response?.data || error
+      );
+
       toast.error(
         error.response?.data?.message ||
           tr("Failed to delete image", "فشل حذف الصورة")
@@ -532,6 +605,10 @@ export default function AllProducts() {
       setDeletingImageId(null);
     }
   };
+
+  // =========================
+  // CREATE / UPDATE PRODUCT
+  // =========================
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -550,7 +627,10 @@ export default function AllProducts() {
       return;
     }
 
-    if (form.base_price === "" || Number(form.base_price) < 0) {
+    if (
+      form.base_price === "" ||
+      Number(form.base_price) < 0
+    ) {
       toast.error(
         tr("Please enter a valid price", "يرجى إدخال سعر صحيح")
       );
@@ -561,161 +641,233 @@ export default function AllProducts() {
       sku: form.sku.trim(),
       name_ar: form.name_ar.trim(),
       name_en: form.name_en.trim(),
-      slug: form.slug.trim() || slugify(form.name_en || form.name_ar),
+
+      slug:
+        form.slug.trim() ||
+        slugify(form.name_en || form.name_ar),
+
       short_desc_ar: form.short_desc_ar,
       short_desc_en: form.short_desc_en,
+
       description_ar: form.description_ar,
       description_en: form.description_en,
+
       brand_id: Number(form.brand_id) || 1,
-      base_price: Number(form.base_price) || 0,
+
+      base_price: Number(form.base_price),
+
       sale_price:
-        form.sale_price === "" ? null : Number(form.sale_price),
+        form.sale_price === ""
+          ? null
+          : Number(form.sale_price),
+
       cost_price:
-        form.cost_price === "" ? null : Number(form.cost_price),
+        form.cost_price === ""
+          ? null
+          : Number(form.cost_price),
+
       stock_qty: Number(form.stock_qty) || 0,
       low_stock_alert: Number(form.low_stock_alert) || 0,
       volume_ml: Number(form.volume_ml) || 0,
+
       concentration: form.concentration,
       gender: form.gender,
-      is_active: Boolean(form.is_active),
-      is_featured: Boolean(form.is_featured),
-      is_best_seller: Boolean(form.is_best_seller),
-      is_new: Boolean(form.is_new),
+
+      // API receives 1 or 0
+      is_active: form.is_active ? 1 : 0,
+      is_featured: form.is_featured ? 1 : 0,
+      is_best_seller: form.is_best_seller ? 1 : 0,
+      is_new: form.is_new ? 1 : 0,
+
       sort_order: Number(form.sort_order) || 0,
+
       categories: form.categories.map(Number),
     };
 
     setSaving(true);
 
-  try {
-  let productId = editingId;
+    try {
+      let productId = editingId;
 
-  if (editingId) {
-    // Keep the current product before updating
-    const currentProduct = products.find(
-      (item) => String(item.id) === String(editingId)
-    );
+      // =========================
+      // UPDATE PRODUCT - PUT
+      // =========================
 
-    // PUT update product
-    const updateResponse = await axios.put(
-      `${API_URL}/products/${editingId}`,
-      payload,
-      { headers: getHeaders() }
-    );
+      if (editingId) {
+        const currentProduct = products.find(
+          (item) =>
+            String(item.id) === String(editingId)
+        );
 
-    console.log("UPDATE PRODUCT RESPONSE:", updateResponse.data);
+        const updateResponse = await axios.put(
+          `${API_URL}/products/${editingId}`,
+          payload,
+          {
+            headers: getHeaders(),
+          }
+        );
 
-    // Get the updated product if the API returns it
-    const responseData = updateResponse.data;
+        console.log(
+          "UPDATE PRODUCT RESPONSE:",
+          updateResponse.data
+        );
 
-    const apiProduct =
-      responseData?.data?.product ||
-      responseData?.product ||
-      responseData?.data?.data ||
-      {};
+        const responseData = updateResponse.data;
 
-    // Merge existing product + submitted values + API response
-    const updatedProduct = {
-      ...(currentProduct || {}),
-      ...payload,
-      ...(apiProduct && typeof apiProduct === "object"
-        ? apiProduct
-        : {}),
-      id: editingId,
-    };
+        const apiProduct =
+          responseData?.data?.product ||
+          responseData?.product ||
+          responseData?.data ||
+          {};
 
-    // Update the table without reloading GET /products
-    setProducts((previous) => {
-      const exists = previous.some(
-        (item) => String(item.id) === String(editingId)
-      );
+        // Preserve old product information
+        const updatedProduct = {
+          ...(currentProduct || {}),
+          ...payload,
 
-      if (exists) {
-        return previous.map((item) =>
-          String(item.id) === String(editingId)
-            ? updatedProduct
-            : item
+          ...(apiProduct &&
+          typeof apiProduct === "object" &&
+          !Array.isArray(apiProduct)
+            ? apiProduct
+            : {}),
+
+          id: editingId,
+
+          // Ensure latest price and stock appear in table
+          sale_price: payload.sale_price,
+          stock_qty: payload.stock_qty,
+
+          is_active: payload.is_active,
+          is_featured: payload.is_featured,
+          is_best_seller: payload.is_best_seller,
+          is_new: payload.is_new,
+
+          effective_price:
+            payload.sale_price !== null
+              ? payload.sale_price
+              : payload.base_price,
+        };
+
+        setProducts((prev) => {
+          const exists = prev.some(
+            (item) =>
+              String(item.id) === String(editingId)
+          );
+
+          if (exists) {
+            return prev.map((item) =>
+              String(item.id) === String(editingId)
+                ? updatedProduct
+                : item
+            );
+          }
+
+          return [updatedProduct, ...prev];
+        });
+
+        toast.success(
+          tr(
+            "Product updated successfully",
+            "تم تحديث المنتج بنجاح"
+          )
         );
       }
 
-      return [updatedProduct, ...previous];
-    });
+      // =========================
+      // CREATE PRODUCT - POST
+      // =========================
 
-    toast.success(
-      tr("Product updated successfully", "تم تحديث المنتج بنجاح")
-    );
-  } else {
-    // POST create product
-    const response = await axios.post(
-      `${API_URL}/products`,
-      payload,
-      { headers: getHeaders() }
-    );
+      else {
+        const response = await axios.post(
+          `${API_URL}/products`,
+          payload,
+          {
+            headers: getHeaders(),
+          }
+        );
 
-    console.log("CREATE PRODUCT RESPONSE:", response.data);
+        console.log(
+          "CREATE PRODUCT RESPONSE:",
+          response.data
+        );
 
-    productId = getProductId(response, payload);
+        const responseData = response.data;
 
-    // Search by SKU or slug if POST did not return an ID
-    if (!productId) {
-      productId = await findCreatedProductId(payload);
-    }
+        productId =
+          responseData?.data?.product?.id ||
+          responseData?.data?.product_id ||
+          responseData?.data?.id ||
+          responseData?.product?.id ||
+          responseData?.product_id ||
+          responseData?.id ||
+          null;
 
-    if (!productId) {
+        if (!productId) {
+          productId = await findCreatedProductId(payload);
+        }
+
+        if (!productId) {
+          toast.error(
+            tr(
+              "Product created, but its ID could not be found.",
+              "تم إنشاء المنتج ولكن لم يتم العثور على رقمه."
+            )
+          );
+
+          await loadProducts();
+
+          setShowForm(false);
+          setForm({ ...emptyForm });
+          return;
+        }
+
+        toast.success(
+          tr(
+            "Product created successfully",
+            "تم إنشاء المنتج بنجاح"
+          )
+        );
+      }
+
+      // =========================
+      // UPLOAD SELECTED IMAGES
+      // =========================
+
+      if (selectedImages.length && productId) {
+        await uploadProductImages(productId);
+      }
+
+      // =========================
+      // RESET FORM
+      // =========================
+
+      setShowForm(false);
+      setEditingId(null);
+      setForm({ ...emptyForm });
+      setSelectedImages([]);
+
+      // Reload after creating only
+      if (!editingId) {
+        await loadProducts();
+      }
+    } catch (error) {
       console.error(
-        "Created product ID was not returned:",
-        response.data
+        "Save product error:",
+        error.response?.data || error
       );
 
       toast.error(
-        tr(
-          "Product created, but its ID could not be found. Images were not uploaded.",
-          "تم إنشاء المنتج، ولكن لم يتم العثور على رقمه. لم يتم رفع الصور."
-        ),
-        { duration: 6000 }
+        error.response?.data?.message ||
+          tr("Failed to save product", "فشل حفظ المنتج")
       );
-
-      await loadProducts();
-      setShowForm(false);
-      setForm({ ...emptyForm });
-      setSelectedImages([]);
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    toast.success(
-      tr("Product created successfully", "تم إنشاء المنتج بنجاح")
-    );
-  }
-
-  // Upload selected images
-  if (selectedImages.length && productId) {
-    await uploadProductImages(productId);
-  }
-
-  // Reset form
-  setShowForm(false);
-  setEditingId(null);
-  setForm({ ...emptyForm });
-  setSelectedImages([]);
-
-  // Reload only after creating a product
-  if (!editingId) {
-    await loadProducts();
-  }
-} catch (error) {
-  console.error(
-    "Save product error:",
-    error.response?.data || error
-  );
-
-  toast.error(
-    error.response?.data?.message ||
-      tr("Failed to save product", "فشل حفظ المنتج")
-  );
-} finally {
-  setSaving(false);
-}
   };
+
+  // =========================
+  // DELETE PRODUCT
+  // =========================
 
   const handleDeleteProduct = async (productId) => {
     if (!window.confirm(labels.deleteConfirm)) return;
@@ -723,17 +875,32 @@ export default function AllProducts() {
     setDeleting(true);
 
     try {
-      await axios.delete(`${API_URL}/products/${productId}`, {
-        headers: getHeaders(),
-      });
-
-      toast.success(
-        tr("Product deleted successfully", "تم حذف المنتج بنجاح")
+      await axios.delete(
+        `${API_URL}/products/${productId}`,
+        {
+          headers: getHeaders(),
+        }
       );
 
-      await loadProducts();
+      setProducts((prev) =>
+        prev.filter(
+          (product) =>
+            String(product.id) !== String(productId)
+        )
+      );
+
+      toast.success(
+        tr(
+          "Product deleted successfully",
+          "تم حذف المنتج بنجاح"
+        )
+      );
     } catch (error) {
-      console.error("Delete product error:", error);
+      console.error(
+        "Delete product error:",
+        error.response?.data || error
+      );
+
       toast.error(
         error.response?.data?.message ||
           tr("Failed to delete product", "فشل حذف المنتج")
@@ -743,8 +910,13 @@ export default function AllProducts() {
     }
   };
 
+  // =========================
+  // SEARCH
+  // =========================
+
   const filteredProducts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
+
     if (!keyword) return products;
 
     return products.filter((product) =>
@@ -759,6 +931,10 @@ export default function AllProducts() {
     );
   }, [products, search]);
 
+  // =========================
+  // STATISTICS
+  // =========================
+
   const activeCount = products.filter((product) =>
     isTrue(product.is_active)
   ).length;
@@ -767,7 +943,14 @@ export default function AllProducts() {
     (product) => Number(product.stock_qty) <= 0
   ).length;
 
-  const ProductImage = ({ product, size = "h-14 w-14" }) => {
+  // =========================
+  // PRODUCT IMAGE COMPONENT
+  // =========================
+
+  const ProductImage = ({
+    product,
+    size = "h-14 w-14",
+  }) => {
     const image =
       getImageUrl(getImages(product)[0]) ||
       product.primary_image ||
@@ -790,15 +973,19 @@ export default function AllProducts() {
     );
   };
 
+  // =========================
+  // UI
+  // =========================
+
   return (
     <div
       dir={dir}
       className="min-h-screen min-w-0 bg-gray-100 p-3 sm:p-5 lg:p-6"
     >
       <div className="mx-auto w-full max-w-[1600px] space-y-5">
-    
 
-        {/* Header */}
+        {/* HEADER */}
+
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-900 text-white">
@@ -809,6 +996,7 @@ export default function AllProducts() {
               <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
                 {labels.products}
               </h1>
+
               <p className="mt-1 text-sm text-gray-500">
                 {tr(
                   "Manage your store products",
@@ -819,7 +1007,17 @@ export default function AllProducts() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-           
+            <button
+              type="button"
+              onClick={loadData}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              <FiRefreshCw
+                className={loading ? "animate-spin" : ""}
+              />
+              {labels.refresh}
+            </button>
 
             <button
               type="button"
@@ -832,37 +1030,61 @@ export default function AllProducts() {
           </div>
         </div>
 
-        {/* Statistics */}
+        {/* STATISTICS */}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard
             title={labels.total}
             value={products.length}
             icon={FiPackage}
           />
+
           <StatCard
             title={labels.activeProducts}
             value={activeCount}
             icon={FiCheckCircle}
           />
+
           <StatCard
             title={labels.outOfStock}
             value={outOfStockCount}
             icon={FiAlertCircle}
           />
-         
         </div>
 
-        {/* Search */}
-     
+        {/* SEARCH */}
 
-        {/* Product table */}
+        <div className="relative">
+          <FiSearch
+            className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${
+              isArabic ? "right-4" : "left-4"
+            }`}
+          />
+
+          <input
+            type="text"
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
+            placeholder={labels.search}
+            className={`${inputClass} ${
+              isArabic ? "pr-11" : "pl-11"
+            }`}
+          />
+        </div>
+
+        {/* PRODUCT TABLE */}
+
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-gray-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <h2 className="font-bold text-gray-900">
               {tr("All Products", "كل المنتجات")}
             </h2>
+
             <p className="text-xs text-gray-500">
-              {filteredProducts.length} {tr("products found", "منتج")}
+              {filteredProducts.length}{" "}
+              {tr("products found", "منتج")}
             </p>
           </div>
 
@@ -874,23 +1096,40 @@ export default function AllProducts() {
           ) : filteredProducts.length === 0 ? (
             <div className="flex min-h-52 flex-col items-center justify-center gap-3 px-4 text-center">
               <FiPackage className="text-3xl text-gray-400" />
+
               <p className="font-semibold text-gray-700">
                 {labels.noProducts}
               </p>
             </div>
           ) : (
             <>
-              {/* Desktop */}
+              {/* DESKTOP TABLE */}
+
               <div className="hidden w-full overflow-x-auto md:block">
-                <table className="w-full min-w-[850px]  text-center">
+                <table className="w-full min-w-[850px] text-center">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                     <tr>
-                      <th className="px-5 py-4">{labels.product}</th>
-                      <th className="px-5 py-4">{labels.sku}</th>
-                      <th className="px-5 py-4">{labels.price}</th>
-                      <th className="px-5 py-4">{labels.stock}</th>
-                      <th className="px-5 py-4">{labels.status}</th>
-                      <th className="px-5 py-4 text-center">
+                      <th className="px-5 py-4">
+                        {labels.product}
+                      </th>
+
+                      <th className="px-5 py-4">
+                        {labels.sku}
+                      </th>
+
+                      <th className="px-5 py-4">
+                        {labels.price}
+                      </th>
+
+                      <th className="px-5 py-4">
+                        {labels.stock}
+                      </th>
+
+                      <th className="px-5 py-4">
+                        {labels.status}
+                      </th>
+
+                      <th className="px-5 py-4">
                         {labels.actions}
                       </th>
                     </tr>
@@ -905,12 +1144,14 @@ export default function AllProducts() {
                         <td className="px-5 py-4">
                           <div className="flex min-w-0 items-center gap-3">
                             <ProductImage product={product} />
-                            <div className="min-w-0">
+
+                            <div className="min-w-0 text-start">
                               <p className="max-w-[240px] truncate text-sm font-semibold text-gray-900">
                                 {isArabic
                                   ? product.name_ar || product.name_en
                                   : product.name_en || product.name_ar}
                               </p>
+
                               <p className="mt-1 truncate text-xs text-gray-400">
                                 {product.slug}
                               </p>
@@ -929,6 +1170,7 @@ export default function AllProducts() {
                               product.base_price ??
                               0}
                           </p>
+
                           {product.sale_price &&
                             Number(product.sale_price) <
                               Number(product.base_price) && (
@@ -971,7 +1213,9 @@ export default function AllProducts() {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
-                              onClick={() => openEditForm(product)}
+                              onClick={() =>
+                                openEditForm(product)
+                              }
                               className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100"
                               title={labels.edit}
                             >
@@ -997,7 +1241,8 @@ export default function AllProducts() {
                 </table>
               </div>
 
-              {/* Mobile */}
+              {/* MOBILE CARDS */}
+
               <div className="grid grid-cols-1 gap-3 p-3 md:hidden">
                 {filteredProducts.map((product) => (
                   <div
@@ -1009,15 +1254,18 @@ export default function AllProducts() {
                         product={product}
                         size="h-16 w-16"
                       />
+
                       <div className="min-w-0 flex-1">
                         <h3 className="break-words text-sm font-bold text-gray-900">
                           {isArabic
                             ? product.name_ar || product.name_en
                             : product.name_en || product.name_ar}
                         </h3>
+
                         <p className="mt-1 break-all text-xs text-gray-400">
                           {product.sku}
                         </p>
+
                         <span
                           className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                             isTrue(product.is_active)
@@ -1037,6 +1285,7 @@ export default function AllProducts() {
                         <p className="text-xs text-gray-400">
                           {labels.price}
                         </p>
+
                         <p className="mt-1 text-sm font-bold text-gray-900">
                           {product.effective_price ??
                             product.sale_price ??
@@ -1044,10 +1293,12 @@ export default function AllProducts() {
                             0}
                         </p>
                       </div>
+
                       <div>
                         <p className="text-xs text-gray-400">
                           {labels.stock}
                         </p>
+
                         <p className="mt-1 text-sm font-bold text-gray-900">
                           {product.stock_qty ?? 0}
                         </p>
@@ -1057,7 +1308,9 @@ export default function AllProducts() {
                     <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3">
                       <button
                         type="button"
-                        onClick={() => openEditForm(product)}
+                        onClick={() =>
+                          openEditForm(product)
+                        }
                         className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-3 py-2.5 text-xs font-semibold text-white"
                       >
                         <FiEdit2 />
@@ -1083,24 +1336,34 @@ export default function AllProducts() {
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* =========================
+          ADD / EDIT MODAL
+      ========================= */}
+
       {showForm && (
         <div
-          className="fixed inset-0 z-200 flex items-start justify-center overflow-y-auto bg-black/50 p-2 py-5 backdrop-blur-[2px] sm:items-center sm:p-5"
+          className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-black/50 p-2 py-5 backdrop-blur-[2px] sm:items-center sm:p-5"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeForm();
+            if (event.target === event.currentTarget) {
+              closeForm();
+            }
           }}
         >
           <div className="my-auto flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+            {/* MODAL HEADER */}
+
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-900 text-white">
                   {editingId ? <FiEdit2 /> : <FiPlus />}
                 </div>
+
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">
                     {editingId ? labels.edit : labels.add}
                   </h2>
+
                   <p className="mt-0.5 text-xs text-gray-500">
                     {tr(
                       "Enter product information",
@@ -1120,15 +1383,20 @@ export default function AllProducts() {
               </button>
             </div>
 
+            {/* FORM */}
+
             <form
               onSubmit={handleSubmit}
               className="min-h-0 flex-1 overflow-y-auto"
             >
               <div className="space-y-6 p-4 sm:p-6">
-                {/* Basic Information */}
+
+                {/* BASIC INFORMATION */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiPackage className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {tr("Basic Information", "البيانات الأساسية")}
                     </h3>
@@ -1137,9 +1405,11 @@ export default function AllProducts() {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label={labels.nameEn}>
                       <input
+                        required
                         value={form.name_en}
                         onChange={(event) => {
                           const value = event.target.value;
+
                           setForm((prev) => ({
                             ...prev,
                             name_en: value,
@@ -1164,6 +1434,7 @@ export default function AllProducts() {
 
                     <Field label={labels.sku}>
                       <input
+                        required
                         value={form.sku}
                         onChange={(event) =>
                           updateField("sku", event.target.value)
@@ -1212,10 +1483,12 @@ export default function AllProducts() {
                   </div>
                 </section>
 
-                {/* Descriptions */}
+                {/* DESCRIPTIONS */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiTag className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {tr("Descriptions", "الأوصاف")}
                     </h3>
@@ -1280,10 +1553,12 @@ export default function AllProducts() {
                   </div>
                 </section>
 
-                {/* Pricing and Stock */}
+                {/* PRICING AND STOCK */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiTag className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {tr("Pricing & Inventory", "الأسعار والمخزون")}
                     </h3>
@@ -1371,10 +1646,12 @@ export default function AllProducts() {
                   </div>
                 </section>
 
-                {/* Product Details */}
+                {/* PRODUCT DETAILS */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiLayers className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {tr("Product Details", "تفاصيل المنتج")}
                     </h3>
@@ -1411,9 +1688,11 @@ export default function AllProducts() {
                         <option value="unisex">
                           {tr("Unisex", "للجنسين")}
                         </option>
+
                         <option value="male">
                           {tr("Male", "رجالي")}
                         </option>
+
                         <option value="female">
                           {tr("Female", "نسائي")}
                         </option>
@@ -1422,10 +1701,12 @@ export default function AllProducts() {
                   </div>
                 </section>
 
-                {/* Categories */}
+                {/* CATEGORIES */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiLayers className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {labels.categories}
                     </h3>
@@ -1438,9 +1719,10 @@ export default function AllProducts() {
                   ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {categories.map((category) => {
-                        const checked = form.categories.includes(
-                          Number(category.id)
-                        );
+                        const checked =
+                          form.categories.includes(
+                            Number(category.id)
+                          );
 
                         return (
                           <label
@@ -1459,6 +1741,7 @@ export default function AllProducts() {
                               }
                               className="h-4 w-4 accent-gray-900"
                             />
+
                             <span className="min-w-0 text-sm font-medium text-gray-700">
                               {isArabic
                                 ? category.name_ar || category.name_en
@@ -1471,10 +1754,12 @@ export default function AllProducts() {
                   )}
                 </section>
 
-                {/* Status */}
+                {/* PRODUCT STATUS */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiStar className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {tr("Product Status", "حالة المنتج")}
                     </h3>
@@ -1488,6 +1773,7 @@ export default function AllProducts() {
                         updateField("is_active", value)
                       }
                     />
+
                     <Toggle
                       label={labels.featured}
                       checked={form.is_featured}
@@ -1495,6 +1781,7 @@ export default function AllProducts() {
                         updateField("is_featured", value)
                       }
                     />
+
                     <Toggle
                       label={labels.bestSeller}
                       checked={form.is_best_seller}
@@ -1502,6 +1789,7 @@ export default function AllProducts() {
                         updateField("is_best_seller", value)
                       }
                     />
+
                     <Toggle
                       label={labels.newProduct}
                       checked={form.is_new}
@@ -1512,11 +1800,13 @@ export default function AllProducts() {
                   </div>
                 </section>
 
-                {/* Existing Images */}
+                {/* EXISTING IMAGES */}
+
                 {editingId && (
                   <section className="space-y-4">
                     <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                       <FiImage className="text-gray-500" />
+
                       <h3 className="font-bold text-gray-800">
                         {tr(
                           "Current Product Images",
@@ -1527,8 +1817,10 @@ export default function AllProducts() {
 
                     {(() => {
                       const currentProduct = products.find(
-                        (product) => product.id === editingId
+                        (product) =>
+                          String(product.id) === String(editingId)
                       );
+
                       const images = getImages(currentProduct);
 
                       if (!images.length) {
@@ -1546,6 +1838,7 @@ export default function AllProducts() {
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                           {images.map((image, index) => {
                             const imageUrl = getImageUrl(image);
+
                             const imageId =
                               image?.id || image?.image_id;
 
@@ -1587,10 +1880,12 @@ export default function AllProducts() {
                   </section>
                 )}
 
-                {/* Upload Images */}
+                {/* UPLOAD IMAGES */}
+
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                     <FiImage className="text-gray-500" />
+
                     <h3 className="font-bold text-gray-800">
                       {labels.images}
                     </h3>
@@ -1598,15 +1893,18 @@ export default function AllProducts() {
 
                   <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-7 text-center hover:border-gray-500 hover:bg-gray-100">
                     <FiUploadCloud className="mb-2 text-3xl text-gray-500" />
+
                     <span className="text-sm font-semibold text-gray-700">
                       {labels.upload}
                     </span>
+
                     <span className="mt-1 text-xs text-gray-400">
                       {tr(
                         "You can select multiple images",
                         "يمكنك اختيار أكثر من صورة"
                       )}
                     </span>
+
                     <input
                       type="file"
                       accept="image/*"
@@ -1628,6 +1926,7 @@ export default function AllProducts() {
                             alt={image.file.name}
                             className="h-full w-full object-cover"
                           />
+
                           <button
                             type="button"
                             onClick={() =>
@@ -1637,6 +1936,7 @@ export default function AllProducts() {
                           >
                             <FiX size={16} />
                           </button>
+
                           <div className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-2 py-1 text-xs text-white">
                             {image.file.name}
                           </div>
@@ -1647,7 +1947,8 @@ export default function AllProducts() {
                 </section>
               </div>
 
-              {/* Footer */}
+              {/* MODAL FOOTER */}
+
               <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-gray-100 bg-white p-4 sm:flex-row sm:justify-end sm:px-6">
                 <button
                   type="button"
@@ -1666,6 +1967,7 @@ export default function AllProducts() {
                   {saving || uploadingImages ? (
                     <>
                       <FiRefreshCw className="animate-spin" />
+
                       {uploadingImages
                         ? labels.uploading
                         : tr("Saving...", "جاري الحفظ...")}
@@ -1685,13 +1987,6 @@ export default function AllProducts() {
     </div>
   );
 }
-
-
-
-
-
-
-
 
 
 
