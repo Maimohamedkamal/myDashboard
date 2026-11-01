@@ -29,7 +29,7 @@ export default function App() {
   const router = createBrowserRouter([
     {
       path: "/",
-      element: <AdminLayout />,
+      element: <ProtectedroutesApp />,
       children: [
         {
           index: true,
@@ -87,14 +87,14 @@ export default function App() {
       ],
     },
 
-    // Protected routes
-    {
-      element: <ProtectedroutesApp />,
-      children: [
+    // // Protected routes
+    // {
+    //   element: <ProtectedroutesApp />,
+    //   children: [
 
     
-      ],
-    },
+    //   ],
+    // },
 
     // Authentication routes
     {

@@ -989,7 +989,7 @@ export default function AllReviews() {
       {/* Review Details Modal */}
       {selectedReview && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-900/50 p-3 backdrop-blur-sm sm:items-center sm:p-5"
+          className="fixed inset-0 z-200 flex items-start justify-center overflow-y-auto bg-gray-900/50 p-3 backdrop-blur-sm sm:items-center sm:p-5"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedReview(null);

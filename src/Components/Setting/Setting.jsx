@@ -1,203 +1,313 @@
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
+import { useTranslation } from "react-i18next";
 import {
   FiSettings,
-  FiGlobe,
-  FiCheck,
-  FiRefreshCw,
   FiSave,
-  FiEdit2,
-  FiX,
-  FiShield,
+  FiRefreshCw,
   FiSearch,
-  FiInfo,
-  FiArrowLeft,
-  FiArrowRight,
+  FiX,
+  FiEdit,
+  FiGlobe,
+  FiCheckCircle,
 } from "react-icons/fi";
 
 const API_URL = "https://oud-elite.shaarapp.com/api/v1";
 
-const getToken = () => localStorage.getItem("token");
-
 const getHeaders = () => ({
+  Authorization: `Bearer ${localStorage.getItem("token")}`,
   Accept: "application/json",
-  ...(getToken()
-    ? { Authorization: `Bearer ${getToken()}` }
-    : {}),
 });
 
-const getErrorMessage = (error, isArabic) => {
-  const message = error.response?.data?.message;
+const parseValue = (value) => {
+  if (typeof value !== "string") return value;
 
-  if (typeof message === "string") return message;
-
-  if (Array.isArray(message)) return message.join(", ");
-
-  return isArabic
-    ? "حدث خطأ. يرجى المحاولة مرة أخرى."
-    : "Something went wrong. Please try again.";
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 };
 
-function normalizeSettings(responseData) {
-  const data = responseData?.data ?? responseData;
-  const raw = data?.settings ?? data;
+// Convert API response into editable rows.
+// Each row keeps its original group and field names.
+const normalizeSettings = (responseData) => {
+  let source = responseData?.data ?? responseData;
 
-  if (Array.isArray(raw)) {
-    return raw.map((item, index) => ({
-      ...item,
-      id: item.id ?? index,
-      key:
-        item.key ??
-        item.name ??
-        item.setting_key ??
-        item.slug ??
-        `setting_${index}`,
-      value:
-        item.value ??
-        item.setting_value ??
-        "",
-    }));
+  if (source?.settings) {
+    source = source.settings;
   }
 
-  if (raw && typeof raw === "object") {
-    return Object.entries(raw).map(([key, value], index) => ({
-      id: index,
-      key,
-      value:
-        value !== null && typeof value === "object"
-          ? JSON.stringify(value)
-          : String(value ?? ""),
-    }));
+  if (Array.isArray(source)) {
+    const result = [];
+
+    source.forEach((group) => {
+      if (!group || typeof group !== "object") return;
+
+      const groupKey = group.key ?? group.group ?? group.name;
+      if (!groupKey) return;
+
+      const parsedValue = parseValue(group.value);
+
+      if (
+        parsedValue &&
+        typeof parsedValue === "object" &&
+        !Array.isArray(parsedValue)
+      ) {
+        Object.entries(parsedValue).forEach(([fieldKey, fieldValue]) => {
+          result.push({
+            id: `${groupKey}_${fieldKey}`,
+            groupKey,
+            fieldKey,
+            key: fieldKey,
+            value:
+              fieldValue === null || fieldValue === undefined
+                ? ""
+                : String(fieldValue),
+          });
+        });
+      } else {
+        result.push({
+          id: String(groupKey),
+          groupKey,
+          fieldKey: "value",
+          key: "value",
+          value:
+            parsedValue === null || parsedValue === undefined
+              ? ""
+              : String(parsedValue),
+        });
+      }
+    });
+
+    return result;
+  }
+
+  if (source && typeof source === "object") {
+    const result = [];
+
+    Object.entries(source).forEach(([groupKey, rawValue]) => {
+      const parsedValue = parseValue(rawValue);
+
+      if (
+        parsedValue &&
+        typeof parsedValue === "object" &&
+        !Array.isArray(parsedValue)
+      ) {
+        Object.entries(parsedValue).forEach(([fieldKey, fieldValue]) => {
+          result.push({
+            id: `${groupKey}_${fieldKey}`,
+            groupKey,
+            fieldKey,
+            key: fieldKey,
+            value:
+              fieldValue === null || fieldValue === undefined
+                ? ""
+                : String(fieldValue),
+          });
+        });
+      } else {
+        result.push({
+          id: String(groupKey),
+          groupKey,
+          fieldKey: "value",
+          key: "value",
+          value:
+            parsedValue === null || parsedValue === undefined
+              ? ""
+              : String(parsedValue),
+        });
+      }
+    });
+
+    return result;
   }
 
   return [];
-}
+};
+
+const groupLabels = {
+  contact: "Contact Information",
+  general: "General Settings",
+  seo: "SEO Settings",
+  social: "Social Media",
+  store: "Store Settings",
+};
+
+const fieldLabels = {
+  whatsapp_phone: "WhatsApp Phone",
+  support_email: "Support Email",
+  address_ar: "Address Arabic",
+  address_en: "Address English",
+  site_name_ar: "Website Name Arabic",
+  site_name_en: "Website Name English",
+  site_logo: "Website Logo",
+  site_favicon: "Website Favicon",
+  meta_title_ar: "Meta Title Arabic",
+  meta_desc_ar: "Meta Description Arabic",
+  meta_title_en: "Meta Title English",
+  meta_desc_en: "Meta Description English",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  twitter: "Twitter",
+  snapchat: "Snapchat",
+  tiktok: "TikTok",
+  currency: "Currency",
+  tax_rate: "Tax Rate",
+};
 
 export default function Setting() {
   const { t, i18n } = useTranslation();
+
+  const isArabic = i18n.language?.startsWith("ar");
 
   const [settings, setSettings] = useState([]);
   const [originalSettings, setOriginalSettings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(false);
 
-  const language =
-    i18n.resolvedLanguage ||
-    i18n.language ||
-    localStorage.getItem("language") ||
-    "en";
+  const text = {
+    title: isArabic ? "إعدادات الموقع" : "Website Settings",
+    subtitle: isArabic
+      ? "إدارة وتحديث إعدادات المتجر"
+      : "Manage and update your store settings",
+    search: isArabic ? "ابحث في الإعدادات..." : "Search settings...",
+    save: isArabic ? "حفظ التغييرات" : "Save Changes",
+    cancel: isArabic ? "إلغاء" : "Cancel",
+    edit: isArabic ? "تعديل الإعدادات" : "Edit Settings",
+    refresh: isArabic ? "تحديث" : "Refresh",
+    loading: isArabic ? "جاري تحميل الإعدادات..." : "Loading settings...",
+    empty: isArabic ? "لا توجد إعدادات" : "No settings found",
+    field: isArabic ? "الإعداد" : "Setting",
+    value: isArabic ? "القيمة" : "Value",
+    group: isArabic ? "القسم" : "Group",
+    success: isArabic
+      ? "تم تحديث الإعدادات بنجاح"
+      : "Settings updated successfully",
+    loadError: isArabic
+      ? "فشل تحميل الإعدادات"
+      : "Failed to load settings",
+    saveError: isArabic
+      ? "فشل تحديث الإعدادات"
+      : "Failed to update settings",
+    noChanges: isArabic ? "لا توجد تغييرات" : "No changes to save",
+    welcome: isArabic
+      ? "مرحباً بك في إعدادات المتجر"
+      : "Welcome to your store settings",
+    language: isArabic ? "اللغة الحالية" : "Current language",
+  };
 
-  const isArabic = language.startsWith("ar");
+  const getErrorMessage = (error) => {
+    const serverMessage = error.response?.data?.message;
 
-  const tr = (key, english, arabic) =>
-    t(`settings.${key}`, {
-      defaultValue: isArabic ? arabic : english,
-    });
+    if (serverMessage) return serverMessage;
 
-  // Update document direction
-  useEffect(() => {
-    document.documentElement.lang = isArabic ? "ar" : "en";
-    document.documentElement.dir = isArabic ? "rtl" : "ltr";
-  }, [isArabic]);
+    return error.message || text.saveError;
+  };
 
-  // Get settings
+  const normalizeResponse = useCallback((data) => {
+    return normalizeSettings(data);
+  }, []);
+
+  // Fetch settings
   const getSettings = useCallback(async () => {
     try {
       setLoading(true);
 
-      const response = await axios.get(
-        `${API_URL}/settings`,
-        { headers: getHeaders() }
-      );
+      const response = await axios.get(`${API_URL}/settings`, {
+        headers: getHeaders(),
+      });
 
-      console.log("GET settings:", response.data);
+      console.log("GET SETTINGS RESPONSE:", response.data);
 
-      const normalized = normalizeSettings(response.data);
+      const normalized = normalizeResponse(response.data);
 
       setSettings(normalized);
-      setOriginalSettings(
-        normalized.map((item) => ({ ...item }))
-      );
+      setOriginalSettings(normalized);
     } catch (error) {
-      console.error(
-        "Get settings error:",
-        error.response?.data || error
-      );
+      console.error("GET SETTINGS ERROR:", error);
+      console.error("SERVER RESPONSE:", error.response?.data);
 
-      toast.error(getErrorMessage(error, isArabic));
+      toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [isArabic]);
+  }, [normalizeResponse]);
 
   useEffect(() => {
     getSettings();
   }, [getSettings]);
 
-  // Change application language
-  const changeLanguage = async (nextLanguage) => {
-    if (nextLanguage === (isArabic ? "ar" : "en")) return;
+  // Detect changes
+  const isDirty = useMemo(() => {
+    if (settings.length !== originalSettings.length) return true;
 
-    try {
-      await i18n.changeLanguage(nextLanguage);
-
-      localStorage.setItem("language", nextLanguage);
-
-      document.documentElement.lang = nextLanguage;
-      document.documentElement.dir =
-        nextLanguage === "ar" ? "rtl" : "ltr";
-
-      toast.success(
-        nextLanguage === "ar"
-          ? "تم تغيير اللغة بنجاح"
-          : "Language changed successfully"
+    return settings.some((item) => {
+      const original = originalSettings.find(
+        (oldItem) =>
+          oldItem.groupKey === item.groupKey &&
+          oldItem.fieldKey === item.fieldKey
       );
-    } catch {
-      toast.error(
-        isArabic
-          ? "تعذر تغيير اللغة"
-          : "Could not change language"
-      );
-    }
-  };
 
-  // Update a setting value locally
-  const updateField = (index, value) => {
+      return !original || original.value !== item.value;
+    });
+  }, [settings, originalSettings]);
+
+  // Update a field
+  const updateField = (id, value) => {
     setSettings((previous) =>
-      previous.map((item, i) =>
-        i === index ? { ...item, value } : item
+      previous.map((item) =>
+        item.id === id ? { ...item, value } : item
       )
     );
   };
 
-  // Cancel editing
+  // Cancel changes
   const cancelEditing = () => {
-    setSettings(
-      originalSettings.map((item) => ({ ...item }))
-    );
+    setSettings(originalSettings);
     setEditing(false);
     setSearch("");
   };
 
-  // Update settings
+  // Build grouped payload
+  const buildPayload = () => {
+    const groupedSettings = {};
+
+    settings.forEach((item) => {
+      if (!item.groupKey || !item.fieldKey) return;
+
+      if (!groupedSettings[item.groupKey]) {
+        groupedSettings[item.groupKey] = {};
+      }
+
+      groupedSettings[item.groupKey][item.fieldKey] = item.value;
+    });
+
+    return {
+      settings: Object.entries(groupedSettings).map(([key, value]) => ({
+        key,
+        value: JSON.stringify(value),
+      })),
+    };
+  };
+
+  // Save settings
   const updateSettings = async () => {
+    if (!isDirty) {
+      toast(text.noChanges);
+      return;
+    }
+
     try {
       setSaving(true);
 
-      // Match this payload to your API documentation if necessary.
-      const payload = {
-        settings: settings.map((item) => ({
-          key: item.key,
-          value: item.value,
-        })),
-      };
+      const payload = buildPayload();
 
-      console.log("PUT settings payload:", payload);
+      console.log("PUT SETTINGS PAYLOAD:", payload);
 
       const response = await axios.put(
         `${API_URL}/settings`,
@@ -210,543 +320,396 @@ export default function Setting() {
         }
       );
 
-      console.log("PUT settings response:", response.data);
+      console.log("UPDATE SETTINGS RESPONSE:", response.data);
 
-      toast.success(
-        response.data?.message ||
-          (isArabic
-            ? "تم تحديث الإعدادات بنجاح"
-            : "Settings updated successfully")
-      );
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message || text.saveError
+        );
+      }
 
-      setEditing(false);
-      setSearch("");
+      toast.success(response.data?.message || text.success);
 
       await getSettings();
+      setEditing(false);
     } catch (error) {
-      console.error(
-        "Update settings error:",
-        error.response?.data || error
-      );
+      console.error("UPDATE SETTINGS ERROR:", error);
+      console.error("SERVER RESPONSE:", error.response?.data);
+      console.error("REQUEST PAYLOAD:", buildPayload());
 
-      toast.error(getErrorMessage(error, isArabic));
+      toast.error(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
   };
 
-  const filteredSettings = settings.filter((item) => {
+  // Search
+  const filteredSettings = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) return true;
+    return settings
+      .map((item) => item)
+      .filter((item) => {
+        if (!query) return true;
+
+        const groupName =
+          groupLabels[item.groupKey] || item.groupKey;
+
+        const fieldName =
+          fieldLabels[item.fieldKey] || item.fieldKey;
+
+        return (
+          String(item.groupKey).toLowerCase().includes(query) ||
+          String(item.fieldKey).toLowerCase().includes(query) ||
+          String(item.value).toLowerCase().includes(query) ||
+          String(groupName).toLowerCase().includes(query) ||
+          String(fieldName).toLowerCase().includes(query)
+        );
+      });
+  }, [settings, search]);
+
+  const getGroupLabel = (groupKey) => {
+    const label = groupLabels[groupKey] || groupKey;
+
+    if (isArabic) {
+      const arabicLabels = {
+        contact: "معلومات التواصل",
+        general: "الإعدادات العامة",
+        seo: "إعدادات محركات البحث",
+        social: "التواصل الاجتماعي",
+        store: "إعدادات المتجر",
+      };
+
+      return arabicLabels[groupKey] || label;
+    }
+
+    return label;
+  };
+
+  const getFieldLabel = (fieldKey) => {
+    if (isArabic) {
+      const arabicLabels = {
+        whatsapp_phone: "رقم الواتساب",
+        support_email: "البريد الإلكتروني للدعم",
+        address_ar: "العنوان بالعربية",
+        address_en: "العنوان بالإنجليزية",
+        site_name_ar: "اسم الموقع بالعربية",
+        site_name_en: "اسم الموقع بالإنجليزية",
+        site_logo: "شعار الموقع",
+        site_favicon: "أيقونة الموقع",
+        meta_title_ar: "عنوان محركات البحث بالعربية",
+        meta_desc_ar: "وصف محركات البحث بالعربية",
+        meta_title_en: "عنوان محركات البحث بالإنجليزية",
+        meta_desc_en: "وصف محركات البحث بالإنجليزية",
+        facebook: "فيسبوك",
+        instagram: "إنستجرام",
+        twitter: "تويتر",
+        snapchat: "سناب شات",
+        tiktok: "تيك توك",
+        currency: "العملة",
+        tax_rate: "نسبة الضريبة",
+      };
+
+      return arabicLabels[fieldKey] || fieldKey;
+    }
+
+    return fieldLabels[fieldKey] || fieldKey;
+  };
+
+  const renderInput = (item) => {
+    const isLongText =
+      item.fieldKey.includes("desc") ||
+      item.fieldKey.includes("address");
+
+    const isUrl =
+      item.fieldKey.includes("url") ||
+      [
+        "facebook",
+        "instagram",
+        "twitter",
+        "snapchat",
+        "tiktok",
+        "site_logo",
+        "site_favicon",
+      ].includes(item.fieldKey);
 
     return (
-      String(item.key ?? "").toLowerCase().includes(query) ||
-      String(item.value ?? "").toLowerCase().includes(query)
+      <input
+        type={isUrl ? "text" : "text"}
+        value={item.value}
+        disabled={!editing}
+        onChange={(e) => updateField(item.id, e.target.value)}
+        dir="auto"
+        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition
+          ${
+            editing
+              ? "border-amber-300 bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+              : "border-gray-200 bg-gray-50 text-gray-600"
+          }`}
+        placeholder={getFieldLabel(item.fieldKey)}
+      />
     );
-  });
-
-  const isDirty =
-    JSON.stringify(
-      settings.map(({ key, value }) => ({ key, value }))
-    ) !==
-    JSON.stringify(
-      originalSettings.map(({ key, value }) => ({
-        key,
-        value,
-      }))
-    );
+  };
 
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen w-full bg-gray-100 p-4 text-gray-500 sm:p-6 lg:p-8"
+      className="min-h-screen w-full bg-gray-100 p-4 sm:p-6 lg:p-8"
     >
-      <div className="mx-auto max-w-7xl space-y-6">
-
-        {/* Header */}
-        <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gray-500 text-white shadow-sm">
-              <FiSettings size={24} />
-            </div>
-
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                OUD ELITE / ADMIN
-              </p>
-
-              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-                {tr("title", "Settings", "الإعدادات")}
-              </h1>
-
-              <p className="mt-1 text-sm text-gray-500">
-                {tr(
-                  "subtitle",
-                  "Manage your application preferences",
-                  "إدارة إعدادات وتفضيلات التطبيق"
-                )}
-              </p>
-            </div>
+      {/* Header */}
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#171717] text-xl text-[#D4AF37]">
+            <FiSettings />
           </div>
 
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
+              {text.title}
+            </h1>
+
+            <p className="mt-1 text-sm text-gray-500">
+              {text.subtitle}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={getSettings}
             disabled={loading || saving}
-            className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 sm:self-auto"
+            className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
           >
-            <FiRefreshCw
-              className={loading ? "animate-spin" : ""}
-              size={16}
-            />
-            {tr("refresh", "Refresh", "تحديث")}
+            <FiRefreshCw className={loading ? "animate-spin" : ""} />
+            {text.refresh}
           </button>
-        </header>
 
-        {/* Intro banner */}
-        <section className="relative overflow-hidden rounded-2xl bg-gray-500 p-5 text-white sm:p-7">
-          <div className="absolute -end-12 -top-16 h-52 w-52 rounded-full border border-white/10" />
-          <div className="absolute -end-4 -top-8 h-36 w-36 rounded-full border border-white/10" />
-
-          <div className="relative flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
-              <FiShield size={22} />
-            </div>
-
-            <div className="max-w-2xl">
-              <h2 className="text-lg font-semibold sm:text-xl">
-                {tr(
-                  "welcome",
-                  "Application preferences",
-                  "تفضيلات التطبيق"
-                )}
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-gray-300">
-                {tr(
-                  "welcomeDescription",
-                  "Manage application settings and select your preferred dashboard language.",
-                  "تحكمي في إعدادات التطبيق واختاري اللغة المناسبة للوحة التحكم."
-                )}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Language Card */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
-              <FiGlobe size={22} />
-            </div>
-
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">
-                {tr(
-                  "languageTitle",
-                  "Language",
-                  "اللغة"
-                )}
-              </h2>
-
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                {tr(
-                  "languageDescription",
-                  "Choose the language used throughout the interface.",
-                  "اختاري اللغة المستخدمة في واجهة التطبيق."
-                )}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {!editing ? (
             <button
               type="button"
-              onClick={() => changeLanguage("en")}
-              aria-pressed={!isArabic}
-              className={`flex min-h-20 items-center justify-between gap-3 rounded-xl border p-4 text-start transition ${
-                !isArabic
-                  ? "border-gray-500 bg-gray-100 ring-1 ring-gray-500"
-                  : "border-gray-200 hover:bg-gray-50"
-              }`}
+              onClick={() => setEditing(true)}
+              disabled={loading || settings.length === 0}
+              className="flex items-center justify-center gap-2 rounded-xl bg-[#171717] px-4 py-2.5 text-sm font-semibold text-[#D4AF37] transition hover:bg-black disabled:opacity-50"
             >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🇬🇧</span>
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    English
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Left to right · LTR
-                  </p>
-                </div>
-              </div>
-
-              {!isArabic && (
-                <FiCheck
-                  size={20}
-                  className="shrink-0 text-gray-500"
-                />
-              )}
+              <FiEdit />
+              {text.edit}
             </button>
-
-            <button
-              type="button"
-              onClick={() => changeLanguage("ar")}
-              aria-pressed={isArabic}
-              className={`flex min-h-20 items-center justify-between gap-3 rounded-xl border p-4 text-start transition ${
-                isArabic
-                  ? "border-gray-500 bg-gray-100 ring-1 ring-gray-500"
-                  : "border-gray-200 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🇪🇬</span>
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    العربية
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    من اليمين إلى اليسار · RTL
-                  </p>
-                </div>
-              </div>
-
-              {isArabic && (
-                <FiCheck
-                  size={20}
-                  className="shrink-0 text-gray-800"
-                />
-              )}
-            </button>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
-            <span className="text-sm text-gray-600">
-              {tr(
-                "currentLanguage",
-                "Current language",
-                "اللغة الحالية"
-              )}
-            </span>
-
-            <span className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-semibold text-white">
-              {isArabic ? "العربية · RTL" : "English · LTR"}
-            </span>
-          </div>
-        </section>
-
-        {/* API Settings */}
-        <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-gray-200 bg-gray-50 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">
-                {tr(
-                  "apiTitle",
-                  "Application Settings",
-                  "إعدادات التطبيق"
-                )}
-              </h2>
-
-              <p className="mt-1 text-sm text-gray-500">
-                {tr(
-                  "apiDescription",
-                  "Settings retrieved from the server",
-                  "الإعدادات التي تم جلبها من الخادم"
-                )}
-              </p>
-            </div>
-
-            {!editing ? (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                disabled={loading || settings.length === 0}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <FiEdit2 size={16} />
-                {tr("edit", "Edit settings", "تعديل الإعدادات")}
-              </button>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={cancelEditing}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  <FiX size={16} />
-                  {tr("cancel", "Cancel", "إلغاء")}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={updateSettings}
-                  disabled={saving || !isDirty}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? (
-                    <FiRefreshCw
-                      className="animate-spin"
-                      size={16}
-                    />
-                  ) : (
-                    <FiSave size={16} />
-                  )}
-
-                  {saving
-                    ? tr("saving", "Saving...", "جارٍ الحفظ...")
-                    : tr("save", "Save changes", "حفظ التغييرات")}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Search */}
-          <div className="border-b border-gray-100 p-4 sm:px-6">
-            <div className="relative max-w-lg">
-              <FiSearch
-                className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${
-                  isArabic ? "right-3" : "left-3"
-                }`}
-                size={18}
-              />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={tr(
-                  "search",
-                  "Search settings...",
-                  "ابحثي في الإعدادات..."
-                )}
-                className={`w-full rounded-xl border border-gray-200 bg-gray-50 py-3 text-sm outline-none transition focus:border-gray-500 focus:bg-white focus:ring-2 focus:ring-gray-200 ${
-                  isArabic ? "pr-10 pl-4" : "pl-10 pr-4"
-                }`}
-              />
-            </div>
-          </div>
-
-          {/* Loading */}
-          {loading ? (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-gray-500">
-              <FiRefreshCw
-                className="animate-spin"
-                size={25}
-              />
-              <p className="text-sm">
-                {tr(
-                  "loading",
-                  "Loading settings...",
-                  "جارٍ تحميل الإعدادات..."
-                )}
-              </p>
-            </div>
-          ) : settings.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center p-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                <FiInfo size={22} />
-              </div>
-
-              <p className="mt-3 font-semibold text-gray-800">
-                {tr(
-                  "emptyTitle",
-                  "No settings found",
-                  "لا توجد إعدادات"
-                )}
-              </p>
-
-              <p className="mt-1 text-sm text-gray-500">
-                {tr(
-                  "emptyDescription",
-                  "The API returned no settings.",
-                  "لم يُرجع الخادم أي إعدادات."
-                )}
-              </p>
-            </div>
-          ) : filteredSettings.length === 0 ? (
-            <div className="p-10 text-center text-sm text-gray-500">
-              {tr(
-                "noResults",
-                "No matching settings found.",
-                "لا توجد إعدادات مطابقة للبحث."
-              )}
-            </div>
           ) : (
             <>
-              {/* Desktop Table */}
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={saving}
+                className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+              >
+                <FiX />
+                {text.cancel}
+              </button>
+
+              <button
+                type="button"
+                onClick={updateSettings}
+                disabled={saving || !isDirty}
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#171717] px-5 py-2.5 text-sm font-semibold text-[#D4AF37] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? (
+                  <FiRefreshCw className="animate-spin" />
+                ) : (
+                  <FiSave />
+                )}
+
+                {saving
+                  ? isArabic
+                    ? "جاري الحفظ..."
+                    : "Saving..."
+                  : text.save}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+     
+      {/* Search */}
+      <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+        <div className="relative">
+          <FiSearch
+            className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${
+              isArabic ? "right-4" : "left-4"
+            }`}
+          />
+
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={text.search}
+            className={`w-full rounded-xl border border-gray-200 bg-gray-50 py-3 text-sm outline-none transition focus:border-amber-400 focus:bg-white ${
+              isArabic ? "pr-11 pl-4" : "pl-11 pr-4"
+            }`}
+          />
+        </div>
+      </div>
+
+      {/* Settings */}
+      {loading ? (
+        <div className="flex min-h-[300px] items-center justify-center rounded-2xl bg-white shadow-sm">
+          <div className="flex items-center gap-3 text-gray-500">
+            <FiRefreshCw className="animate-spin text-xl text-amber-500" />
+            {text.loading}
+          </div>
+        </div>
+      ) : filteredSettings.length === 0 ? (
+        <div className="flex min-h-[250px] flex-col items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm">
+          <FiSettings className="mb-3 text-4xl" />
+          <p>{text.empty}</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(
+            filteredSettings.reduce((groups, item) => {
+              if (!groups[item.groupKey]) {
+                groups[item.groupKey] = [];
+              }
+
+              groups[item.groupKey].push(item);
+              return groups;
+            }, {})
+          ).map(([groupKey, groupItems]) => (
+            <section
+              key={groupKey}
+              className="overflow-hidden rounded-2xl bg-white shadow-sm"
+            >
+              <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-lg text-amber-600">
+                  <FiSettings />
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-gray-900">
+                    {getGroupLabel(groupKey)}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-gray-400">
+                    {groupItems.length}{" "}
+                    {isArabic ? "إعدادات" : "settings"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Desktop */}
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full table-fixed text-sm">
-                  <thead className="bg-gray-100 text-gray-600">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500">
                     <tr>
-                      <th className="w-16 px-4 py-4 text-center font-semibold">
-                        #
+                      <th className="px-5 py-4 text-start font-semibold">
+                        {text.field}
                       </th>
-                      <th className="w-1/3 break-words px-4 py-4 text-start font-semibold">
-                        {tr("key", "Setting", "الإعداد")}
+
+                      <th className="px-5 py-4 text-start font-semibold">
+                        {text.value}
                       </th>
-                      <th className="px-4 py-4 text-start font-semibold">
-                        {tr("value", "Value", "القيمة")}
+
+                      <th className="px-5 py-4 text-start font-semibold">
+                        {text.group}
                       </th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-gray-100">
-                    {filteredSettings.map((item, index) => {
-                      const actualIndex = settings.findIndex(
-                        (setting) => setting.id === item.id
-                      );
+                    {groupItems.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="transition hover:bg-gray-50/70"
+                      >
+                        <td className="w-1/4 px-5 py-4 font-medium text-gray-700">
+                          {getFieldLabel(item.fieldKey)}
+                          <p className="mt-1 text-xs font-normal text-gray-400">
+                            {item.fieldKey}
+                          </p>
+                        </td>
 
-                      return (
-                        <tr
-                          key={`${item.key}-${index}`}
-                          className="transition hover:bg-gray-50"
-                        >
-                          <td className="px-4 py-4 text-center text-gray-400">
-                            {index + 1}
-                          </td>
+                        <td className="px-5 py-4">
+                          {renderInput(item)}
+                        </td>
 
-                          <td className="break-words px-4 py-4 font-medium text-gray-800">
-                            {item.key}
-                          </td>
-
-                          <td className="break-words px-4 py-4">
-                            {editing ? (
-                              <textarea
-                                rows={2}
-                                value={String(item.value ?? "")}
-                                onChange={(event) =>
-                                  updateField(
-                                    actualIndex,
-                                    event.target.value
-                                  )
-                                }
-                                className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-600 focus:ring-2 focus:ring-gray-200"
-                              />
-                            ) : (
-                              <span className="whitespace-pre-wrap text-gray-600">
-                                {String(item.value ?? "—")}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        <td className="px-5 py-4 text-gray-500">
+                          <span className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs">
+                            {item.groupKey}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Mobile Cards */}
-              <div className="space-y-3 p-4 md:hidden">
-                {filteredSettings.map((item, index) => {
-                  const actualIndex = settings.findIndex(
-                    (setting) => setting.id === item.id
-                  );
+              {/* Mobile */}
+              <div className="space-y-4 p-4 md:hidden">
+                {groupItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-gray-100 p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        {getFieldLabel(item.fieldKey)}
+                      </label>
 
-                  return (
-                    <article
-                      key={`${item.key}-${index}`}
-                      className="rounded-xl border border-gray-200 bg-white p-4"
-                    >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-400">
-                            {tr("key", "Setting", "الإعداد")} #
-                            {index + 1}
-                          </p>
+                      <span className="rounded-md bg-gray-100 px-2 py-1 text-[10px] text-gray-500">
+                        {item.fieldKey}
+                      </span>
+                    </div>
 
-                          <h3 className="mt-1 break-words font-semibold text-gray-800">
-                            {item.key}
-                          </h3>
-                        </div>
-
-                        <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-500">
-                          {index + 1}
-                        </span>
-                      </div>
-
-                      {editing ? (
-                        <textarea
-                          rows={3}
-                          value={String(item.value ?? "")}
-                          onChange={(event) =>
-                            updateField(
-                              actualIndex,
-                              event.target.value
-                            )
-                          }
-                          className="w-full resize-y rounded-xl border border-gray-300 bg-gray-50 px-3 py-3 text-sm outline-none focus:border-gray-600 focus:bg-white focus:ring-2 focus:ring-gray-200"
-                        />
-                      ) : (
-                        <div className="break-words rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-600">
-                          {String(item.value ?? "—")}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-
-              {/* Bottom Actions */}
-              {editing && (
-                <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                  <p className="text-xs text-gray-500">
-                    {tr(
-                      "editNotice",
-                      "Remember to save your changes.",
-                      "تذكري حفظ التغييرات بعد الانتهاء."
-                    )}
-                  </p>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={cancelEditing}
-                      disabled={saving}
-                      className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 sm:flex-none"
-                    >
-                      {tr("cancel", "Cancel", "إلغاء")}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={updateSettings}
-                      disabled={saving || !isDirty}
-                      className="flex-1 rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-                    >
-                      {saving
-                        ? tr("saving", "Saving...", "جارٍ الحفظ...")
-                        : tr("save", "Save changes", "حفظ التغييرات")}
-                    </button>
+                    {renderInput(item)}
                   </div>
-                </div>
-              )}
-            </>
-          )}
-        </section>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
-        {/* Footer */}
-        <footer className="flex flex-col gap-2 border-t border-gray-200 pt-5 text-xs text-gray-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            © {new Date().getFullYear()} Oud Elite.{" "}
-            {tr(
-              "rights",
-              "All rights reserved.",
-              "جميع الحقوق محفوظة."
-            )}
-          </p>
+      {/* Bottom save bar */}
+      {editing && (
+        <div className="sticky bottom-4 z-20 mt-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FiCheckCircle
+              className={isDirty ? "text-amber-500" : "text-green-500"}
+            />
 
-          <p>
-            {tr(
-              "footer",
-              "Admin settings",
-              "إعدادات المسؤول"
-            )}
-          </p>
-        </footer>
-      </div>
+            {isDirty
+              ? isArabic
+                ? "لديك تغييرات غير محفوظة"
+                : "You have unsaved changes"
+              : isArabic
+                ? "كل التغييرات محفوظة"
+                : "All changes are saved"}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={cancelEditing}
+              disabled={saving}
+              className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 sm:flex-none"
+            >
+              {text.cancel}
+            </button>
+
+            <button
+              type="button"
+              onClick={updateSettings}
+              disabled={saving || !isDirty}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#171717] px-5 py-2.5 text-sm font-semibold text-[#D4AF37] hover:bg-black disabled:opacity-50 sm:flex-none"
+            >
+              <FiSave />
+              {saving ? "..." : text.save}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
